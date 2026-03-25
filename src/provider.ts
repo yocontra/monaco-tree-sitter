@@ -1,19 +1,10 @@
-import {
-  type Edit,
-  Language,
-  type Node,
-  Parser,
-  type Point,
-  Query,
-  type QueryCapture,
-  type Tree,
-} from "web-tree-sitter";
+import { Language, Parser, Query, type Tree } from "web-tree-sitter"
 
 import {
   buildCaptureMapping,
   buildLegend,
   resolveCaptureName,
-} from "./capture-mapping.js";
+} from "./capture-mapping.js"
 
 import type {
   CreateTreeSitterTokenProviderOptions,
@@ -28,7 +19,7 @@ import type {
   MonacoSemanticTokensLegend,
   MonacoTextModel,
   TreeSitterTokenProvider,
-} from "./types.js";
+} from "./types.js"
 
 /**
  * Create a tree-sitter-powered semantic token provider for Monaco Editor.
@@ -50,242 +41,224 @@ import type {
 export async function createTreeSitterTokenProvider(
   options: CreateTreeSitterTokenProviderOptions,
 ): Promise<TreeSitterTokenProvider> {
-  // Initialize the tree-sitter WASM runtime
   await Parser.init({
     locateFile(_scriptName: string, _scriptDirectory: string) {
-      return options.treeSitterWasm;
+      return options.treeSitterWasm
     },
-  });
+  })
 
-  // Load the language
-  const language = await Language.load(options.languageWasm);
-
-  // Compile the highlights query
-  const query = new Query(language, options.highlights);
-
-  // Build capture mapping and legend
-  const mapping = buildCaptureMapping(options.captureMapping);
-  const { tokenTypes, tokenTypeIndex } = buildLegend(mapping);
+  const language = await Language.load(options.languageWasm)
+  const query = new Query(language, options.highlights)
+  const mapping = buildCaptureMapping(options.captureMapping)
+  const { tokenTypes, tokenTypeIndex } = buildLegend(mapping)
 
   const legend: MonacoSemanticTokensLegend = {
     tokenTypes,
     tokenModifiers: [],
-  };
+  }
 
-  // Track per-model state for incremental parsing
-  const models = new Map<string, ModelState>();
+  const models = new Map<string, ModelState>()
+  const disposables: MonacoDisposable[] = []
 
-  // Track all disposables for cleanup
-  const disposables: MonacoDisposable[] = [];
-
-  let resultCounter = 0;
-  // Map resultId -> encoded token data for computing edits
-  const resultCache = new Map<string, Uint32Array>();
+  let resultCounter = 0
+  const MaxCachedResults = 10
+  const resultCache = new Map<string, Uint32Array>()
 
   function getOrCreateModelState(model: MonacoTextModel): ModelState {
-    const uri = model.uri.toString();
-    const existing = models.get(uri);
-    if (existing) return existing;
+    const uri = model.uri.toString()
+    const existing = models.get(uri)
+    if (existing) {
+      return existing
+    }
 
-    const parser = new Parser();
-    parser.setLanguage(language);
+    const parser = new Parser()
+    parser.setLanguage(language)
 
-    const text = model.getValue();
-    const tree = parser.parse(text);
+    const text = model.getValue()
+    const tree = parser.parse(text)
     if (!tree) {
-      throw new Error(`Failed to parse model: ${uri}`);
+      throw new Error(`Failed to parse model: ${uri}`)
     }
 
     const disposable = model.onDidChangeContent((event) => {
-      const state = models.get(uri);
-      if (!state) return;
+      const state = models.get(uri)
+      if (!state) {
+        return
+      }
 
-      // Apply edits to the old tree for incremental parsing
       for (const change of event.changes) {
-        applyTreeEdit(state.tree, change);
+        applyTreeEdit(state.tree, change)
       }
 
-      // Re-parse with the edited tree
-      const newText = model.getValue();
-      const newTree = state.parser.parse(newText, state.tree);
+      const newText = model.getValue()
+      const newTree = state.parser.parse(newText, state.tree)
       if (newTree) {
-        state.tree.delete();
-        state.tree = newTree;
-        state.version = model.getVersionId();
+        state.tree.delete()
+        state.tree = newTree
+        state.version = model.getVersionId()
       }
-    });
+    })
 
     const state: ModelState = {
       tree,
       parser,
       version: model.getVersionId(),
-      previousData: null,
-      previousResultId: null,
       disposable,
-    };
-    models.set(uri, state);
-    disposables.push(disposable);
+    }
+    models.set(uri, state)
+    disposables.push(disposable)
 
-    return state;
+    return state
   }
 
-  function applyTreeEdit(
-    tree: Tree,
-    change: MonacoModelContentChange,
+  function applyTreeEdit(tree: Tree, change: MonacoModelContentChange): void {
+    const newLines = change.text.split("\n")
+    const startRow = change.range.startLineNumber - 1
+    const startCol = change.range.startColumn - 1
+
+    tree.edit({
+      startIndex: change.rangeOffset,
+      oldEndIndex: change.rangeOffset + change.rangeLength,
+      newEndIndex: change.rangeOffset + change.text.length,
+      startPosition: { row: startRow, column: startCol },
+      oldEndPosition: {
+        row: change.range.endLineNumber - 1,
+        column: change.range.endColumn - 1,
+      },
+      newEndPosition: {
+        row: startRow + newLines.length - 1,
+        column:
+          newLines.length === 1
+            ? startCol + change.text.length
+            : newLines[newLines.length - 1]?.length,
+      },
+    })
+  }
+
+  function resolveTokenTypeIndex(captureName: string): number | undefined {
+    const monacoType = resolveCaptureName(captureName, mapping)
+    if (monacoType === undefined) {
+      return undefined
+    }
+    return tokenTypeIndex.get(monacoType)
+  }
+
+  function pushDeltaToken(
+    state: { buffer: number[]; prevLine: number; prevChar: number },
+    row: number,
+    col: number,
+    length: number,
+    typeIdx: number,
   ): void {
-    const startIndex = change.rangeOffset;
-    const oldEndIndex = change.rangeOffset + change.rangeLength;
-    const newEndIndex = change.rangeOffset + change.text.length;
+    if (length <= 0) {
+      return
+    }
+    const deltaLine = row - state.prevLine
+    const deltaChar = deltaLine === 0 ? col - state.prevChar : col
+    state.buffer.push(deltaLine, deltaChar, length, typeIdx, 0)
+    state.prevLine = row
+    state.prevChar = col
+  }
 
-    const startPosition: Point = {
-      row: change.range.startLineNumber - 1,
-      column: change.range.startColumn - 1,
-    };
+  function sortCapturesByPosition(
+    captures: ReturnType<Query["captures"]>,
+  ): void {
+    captures.sort((a, b) => {
+      const aStart = a.node.startPosition
+      const bStart = b.node.startPosition
+      return aStart.row !== bStart.row
+        ? aStart.row - bStart.row
+        : aStart.column - bStart.column
+    })
+  }
 
-    const oldEndPosition: Point = {
-      row: change.range.endLineNumber - 1,
-      column: change.range.endColumn - 1,
-    };
+  function emitCaptureTokens(
+    capture: ReturnType<Query["captures"]>[number],
+    typeIdx: number,
+    state: { buffer: number[]; prevLine: number; prevChar: number },
+  ): void {
+    const { startPosition, endPosition } = capture.node
 
-    // Compute new end position from the inserted text
-    const newLines = change.text.split("\n");
-    const newEndRow = startPosition.row + newLines.length - 1;
-    const newEndColumn =
-      newLines.length === 1
-        ? startPosition.column + change.text.length
-        : newLines[newLines.length - 1]!.length;
+    if (startPosition.row === endPosition.row) {
+      pushDeltaToken(
+        state,
+        startPosition.row,
+        startPosition.column,
+        endPosition.column - startPosition.column,
+        typeIdx,
+      )
+      return
+    }
 
-    const newEndPosition: Point = {
-      row: newEndRow,
-      column: newEndColumn,
-    };
-
-    const edit: Edit = {
-      startIndex,
-      oldEndIndex,
-      newEndIndex,
-      startPosition,
-      oldEndPosition,
-      newEndPosition,
-    };
-
-    tree.edit(edit);
+    for (const [i, line] of capture.node.text.split("\n").entries()) {
+      pushDeltaToken(
+        state,
+        startPosition.row + i,
+        i === 0 ? startPosition.column : 0,
+        line.length,
+        typeIdx,
+      )
+    }
   }
 
   function encodeTokens(tree: Tree): Uint32Array {
-    const captures: QueryCapture[] = query.captures(tree.rootNode);
+    const captures = query.captures(tree.rootNode)
+    sortCapturesByPosition(captures)
 
-    // Sort captures by position: line first, then column
-    captures.sort((a: QueryCapture, b: QueryCapture) => {
-      const aStart = a.node.startPosition;
-      const bStart = b.node.startPosition;
-      if (aStart.row !== bStart.row) return aStart.row - bStart.row;
-      return aStart.column - bStart.column;
-    });
-
-    // Build the delta-encoded token array (5 ints per token)
-    const buffer: number[] = [];
-
-    let prevLine = 0;
-    let prevChar = 0;
+    const state = { buffer: [] as number[], prevLine: 0, prevChar: 0 }
 
     for (const capture of captures) {
-      const monacoType = resolveCaptureName(capture.name, mapping);
-      if (monacoType === undefined) continue;
-
-      const typeIndex = tokenTypeIndex.get(monacoType);
-      if (typeIndex === undefined) continue;
-
-      const node: Node = capture.node;
-      const startRow = node.startPosition.row;
-      const startCol = node.startPosition.column;
-      const endRow = node.endPosition.row;
-      const endCol = node.endPosition.column;
-
-      // For multi-line tokens, emit one token per line
-      if (startRow === endRow) {
-        // Single-line token
-        const deltaLine = startRow - prevLine;
-        const deltaChar = deltaLine === 0 ? startCol - prevChar : startCol;
-        const length = endCol - startCol;
-
-        if (length > 0) {
-          buffer.push(deltaLine, deltaChar, length, typeIndex, 0);
-          prevLine = startRow;
-          prevChar = startCol;
-        }
-      } else {
-        // Multi-line token: split into one token per line
-        const text = node.text;
-        const lines = text.split("\n");
-
-        for (let i = 0; i < lines.length; i++) {
-          const line = lines[i]!;
-          if (line.length === 0) continue;
-
-          const row = startRow + i;
-          const col = i === 0 ? startCol : 0;
-          const length = line.length;
-
-          const deltaLine = row - prevLine;
-          const deltaChar = deltaLine === 0 ? col - prevChar : col;
-
-          buffer.push(deltaLine, deltaChar, length, typeIndex, 0);
-          prevLine = row;
-          prevChar = col;
-        }
+      const typeIdx = resolveTokenTypeIndex(capture.name)
+      if (typeIdx === undefined) {
+        continue
       }
+      emitCaptureTokens(capture, typeIdx, state)
     }
 
-    return new Uint32Array(buffer);
+    return new Uint32Array(state.buffer)
+  }
+
+  function findFirstDiff(a: Uint32Array, b: Uint32Array): number {
+    const minLen = Math.min(a.length, b.length)
+    for (let i = 0; i < minLen; i++) {
+      if (a[i] !== b[i]) {
+        return i
+      }
+    }
+    return -1
   }
 
   function computeEdits(
     oldData: Uint32Array,
     newData: Uint32Array,
   ): MonacoSemanticTokensEdits["edits"] | null {
-    // Find the first difference
-    const minLen = Math.min(oldData.length, newData.length);
-    let firstDiff = -1;
-    for (let i = 0; i < minLen; i++) {
-      if (oldData[i] !== newData[i]) {
-        firstDiff = i;
-        break;
-      }
-    }
+    const firstDiff = findFirstDiff(oldData, newData)
 
-    // If no differences in the overlapping region
     if (firstDiff === -1) {
-      if (oldData.length === newData.length) return null; // Identical
-      if (oldData.length < newData.length) {
-        // New data is longer — append
-        return [
-          {
-            start: oldData.length,
-            deleteCount: 0,
-            data: newData.slice(oldData.length),
-          },
-        ];
+      if (oldData.length === newData.length) {
+        return null
       }
-      // Old data is longer — truncate
       return [
         {
-          start: newData.length,
-          deleteCount: oldData.length - newData.length,
+          start: Math.min(oldData.length, newData.length),
+          deleteCount: Math.max(0, oldData.length - newData.length),
+          data:
+            oldData.length < newData.length
+              ? newData.slice(oldData.length)
+              : undefined,
         },
-      ];
+      ]
     }
 
-    // Find the last difference (searching from the end)
-    let oldEnd = oldData.length;
-    let newEnd = newData.length;
+    let oldEnd = oldData.length
+    let newEnd = newData.length
     while (
       oldEnd > firstDiff &&
       newEnd > firstDiff &&
       oldData[oldEnd - 1] === newData[newEnd - 1]
     ) {
-      oldEnd--;
-      newEnd--;
+      oldEnd--
+      newEnd--
     }
 
     return [
@@ -294,153 +267,148 @@ export async function createTreeSitterTokenProvider(
         deleteCount: oldEnd - firstDiff,
         data: newData.slice(firstDiff, newEnd),
       },
-    ];
+    ]
   }
 
   function cleanResultCache(): void {
-    if (resultCache.size > 10) {
-      const keys = Array.from(resultCache.keys());
-      for (let i = 0; i < keys.length - 10; i++) {
-        resultCache.delete(keys[i]!);
+    if (resultCache.size > MaxCachedResults) {
+      const keys = Array.from(resultCache.keys())
+      for (const key of keys.slice(0, keys.length - MaxCachedResults)) {
+        resultCache.delete(key)
       }
     }
   }
 
   function ensureTreeUpToDate(model: MonacoTextModel, state: ModelState): void {
     if (model.getVersionId() !== state.version) {
-      const newText = model.getValue();
-      const newTree = state.parser.parse(newText, state.tree);
+      const newText = model.getValue()
+      const newTree = state.parser.parse(newText, state.tree)
       if (newTree) {
-        state.tree.delete();
-        state.tree = newTree;
-        state.version = model.getVersionId();
+        state.tree.delete()
+        state.tree = newTree
+        state.version = model.getVersionId()
       }
     }
   }
 
   const semanticTokensProvider: MonacoDocumentSemanticTokensProvider = {
     getLegend(): MonacoSemanticTokensLegend {
-      return legend;
+      return legend
     },
 
     provideDocumentSemanticTokens(
       model: MonacoTextModel,
       _lastResultId: string | null,
-      _token: MonacoCancellationToken,
+      token: MonacoCancellationToken,
     ): MonacoSemanticTokens | null {
-      const state = getOrCreateModelState(model);
-      ensureTreeUpToDate(model, state);
+      if (token.isCancellationRequested) {
+        return null
+      }
 
-      const data = encodeTokens(state.tree);
-      const resultId = String(++resultCounter);
+      const state = getOrCreateModelState(model)
+      ensureTreeUpToDate(model, state)
 
-      state.previousData = data;
-      state.previousResultId = resultId;
-      resultCache.set(resultId, data);
-      cleanResultCache();
+      const data = encodeTokens(state.tree)
+      const resultId = String(++resultCounter)
 
-      return { resultId, data };
+      resultCache.set(resultId, data)
+      cleanResultCache()
+
+      return { resultId, data }
     },
 
     provideDocumentSemanticTokensEdits(
       model: MonacoTextModel,
       lastResultId: string,
-      _token: MonacoCancellationToken,
+      token: MonacoCancellationToken,
     ): MonacoSemanticTokensEdits | MonacoSemanticTokens | null {
-      const state = getOrCreateModelState(model);
-      ensureTreeUpToDate(model, state);
-
-      const newData = encodeTokens(state.tree);
-      const resultId = String(++resultCounter);
-
-      // Try to compute edits from previous result
-      const oldData = resultCache.get(lastResultId);
-      if (oldData) {
-        const edits = computeEdits(oldData, newData);
-
-        state.previousData = newData;
-        state.previousResultId = resultId;
-        resultCache.set(resultId, newData);
-        cleanResultCache();
-
-        if (edits === null) {
-          return { resultId, edits: [] };
-        }
-        return { resultId, edits };
+      if (token.isCancellationRequested) {
+        return null
       }
 
-      // No previous data — fall back to full tokens
-      state.previousData = newData;
-      state.previousResultId = resultId;
-      resultCache.set(resultId, newData);
+      const state = getOrCreateModelState(model)
+      ensureTreeUpToDate(model, state)
 
-      return { resultId, data: newData };
+      const newData = encodeTokens(state.tree)
+      const resultId = String(++resultCounter)
+
+      const oldData = resultCache.get(lastResultId)
+      resultCache.set(resultId, newData)
+
+      if (oldData) {
+        const edits = computeEdits(oldData, newData)
+        cleanResultCache()
+
+        if (edits === null) {
+          return { resultId, edits: [] }
+        }
+        return { resultId, edits }
+      }
+
+      cleanResultCache()
+
+      return { resultId, data: newData }
     },
 
     releaseDocumentSemanticTokens(resultId: string | undefined): void {
       if (resultId) {
-        resultCache.delete(resultId);
+        resultCache.delete(resultId)
       }
     },
-  };
+  }
 
   function register(monaco: MonacoNamespace, languageId: string): void {
-    // Register the semantic tokens provider
-    const providerDisposable = monaco.languages.registerDocumentSemanticTokensProvider(
-      languageId,
-      semanticTokensProvider,
-      legend,
-    );
-    disposables.push(providerDisposable);
+    const providerDisposable =
+      monaco.languages.registerDocumentSemanticTokensProvider(
+        languageId,
+        semanticTokensProvider,
+        legend,
+      )
+    disposables.push(providerDisposable)
 
-    // Set up model tracking for existing models
     for (const model of monaco.editor.getModels()) {
       if (model.getLanguageId() === languageId) {
-        getOrCreateModelState(model);
+        getOrCreateModelState(model)
       }
     }
 
-    // Track new models
-    const modelDisposable = monaco.editor.onDidCreateModel((model: MonacoTextModel) => {
-      if (model.getLanguageId() === languageId) {
-        getOrCreateModelState(model);
-      }
-    });
-    disposables.push(modelDisposable);
+    const modelDisposable = monaco.editor.onDidCreateModel(
+      (model: MonacoTextModel) => {
+        if (model.getLanguageId() === languageId) {
+          getOrCreateModelState(model)
+        }
+      },
+    )
+    disposables.push(modelDisposable)
 
-    // Clean up when models are disposed
-    const disposeModelListener = monaco.editor.onWillDisposeModel((model: MonacoTextModel) => {
-      const uri = model.uri.toString();
-      const state = models.get(uri);
-      if (state) {
-        state.tree.delete();
-        state.parser.delete();
-        state.disposable.dispose();
-        models.delete(uri);
-      }
-    });
-    disposables.push(disposeModelListener);
+    const disposeModelListener = monaco.editor.onWillDisposeModel(
+      (model: MonacoTextModel) => {
+        const uri = model.uri.toString()
+        const state = models.get(uri)
+        if (state) {
+          state.tree.delete()
+          state.parser.delete()
+          state.disposable.dispose()
+          models.delete(uri)
+        }
+      },
+    )
+    disposables.push(disposeModelListener)
   }
 
   function dispose(): void {
-    // Dispose all Monaco registrations and listeners
     for (const d of disposables) {
-      d.dispose();
+      d.dispose()
     }
-    disposables.length = 0;
+    disposables.length = 0
 
-    // Delete all trees and parsers
     for (const [, state] of models) {
-      state.tree.delete();
-      state.parser.delete();
+      state.tree.delete()
+      state.parser.delete()
     }
-    models.clear();
-
-    // Clear result cache
-    resultCache.clear();
-
-    // Delete the query
-    query.delete();
+    models.clear()
+    resultCache.clear()
+    query.delete()
   }
 
   return {
@@ -448,5 +416,5 @@ export async function createTreeSitterTokenProvider(
     language,
     query,
     dispose,
-  };
+  }
 }

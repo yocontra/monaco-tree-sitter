@@ -1,4 +1,4 @@
-import type { CaptureMapping } from "./types.js";
+import type { CaptureMapping } from "./types.js"
 
 /**
  * Default mapping from tree-sitter capture names to Monaco semantic token types.
@@ -13,22 +13,22 @@ import type { CaptureMapping } from "./types.js";
  */
 export const DEFAULT_CAPTURE_MAPPING: CaptureMapping = {
   // Comments
-  "comment": "comment",
+  comment: "comment",
   "comment.line": "comment",
   "comment.block": "comment",
 
   // Strings
-  "string": "string",
+  string: "string",
   "string.special": "string",
   "string.regex": "regexp",
   "string.escape": "string",
 
   // Numbers
-  "number": "number",
+  number: "number",
   "number.float": "number",
 
   // Keywords
-  "keyword": "keyword",
+  keyword: "keyword",
   "keyword.control": "keyword",
   "keyword.operator": "operator",
   "keyword.function": "keyword",
@@ -40,7 +40,7 @@ export const DEFAULT_CAPTURE_MAPPING: CaptureMapping = {
   "keyword.directive": "macro",
 
   // Functions
-  "function": "function",
+  function: "function",
   "function.builtin": "function",
   "function.call": "function",
   "function.method": "method",
@@ -48,60 +48,64 @@ export const DEFAULT_CAPTURE_MAPPING: CaptureMapping = {
   "function.macro": "macro",
 
   // Variables
-  "variable": "variable",
+  variable: "variable",
   "variable.builtin": "variable",
   "variable.parameter": "parameter",
 
   // Types
-  "type": "type",
+  type: "type",
   "type.builtin": "type",
   "type.definition": "type",
 
   // Constants
-  "constant": "enumMember",
+  constant: "enumMember",
   "constant.builtin": "enumMember",
 
   // Properties
-  "property": "property",
+  property: "property",
   "property.definition": "property",
 
   // Operators
-  "operator": "operator",
+  operator: "operator",
 
   // Punctuation — Monaco doesn't have a dedicated punctuation type,
   // so we use "regexp" as a distinguishable fallback.
-  "punctuation": "regexp",
+  punctuation: "regexp",
   "punctuation.bracket": "regexp",
   "punctuation.delimiter": "regexp",
   "punctuation.special": "regexp",
 
   // Tags (HTML/XML)
-  "tag": "keyword",
+  tag: "keyword",
   "tag.attribute": "property",
 
   // Labels
-  "label": "label",
+  label: "label",
 
   // Namespaces
-  "namespace": "namespace",
-  "module": "namespace",
+  namespace: "namespace",
+  module: "namespace",
 
   // Boolean
-  "boolean": "keyword",
+  boolean: "keyword",
 
   // Constructors
-  "constructor": "function",
+  constructor: "function",
 
   // Attributes
-  "attribute": "macro",
-};
+  attribute: "macro",
+}
 
 /**
  * Merge a user-provided capture mapping on top of the defaults.
  */
-export function buildCaptureMapping(overrides?: CaptureMapping): CaptureMapping {
-  if (!overrides) return DEFAULT_CAPTURE_MAPPING;
-  return { ...DEFAULT_CAPTURE_MAPPING, ...overrides };
+export function buildCaptureMapping(
+  overrides?: CaptureMapping,
+): CaptureMapping {
+  if (!overrides) {
+    return DEFAULT_CAPTURE_MAPPING
+  }
+  return { ...DEFAULT_CAPTURE_MAPPING, ...overrides }
 }
 
 /**
@@ -117,16 +121,20 @@ export function resolveCaptureName(
   mapping: CaptureMapping,
 ): string | undefined {
   // Exact match
-  if (name in mapping) return mapping[name];
-
-  // Try base name (everything before the first dot)
-  const dotIndex = name.indexOf(".");
-  if (dotIndex > 0) {
-    const base = name.substring(0, dotIndex);
-    if (base in mapping) return mapping[base];
+  if (name in mapping) {
+    return mapping[name]
   }
 
-  return undefined;
+  // Try base name (everything before the first dot)
+  const dotIndex = name.indexOf(".")
+  if (dotIndex > 0) {
+    const base = name.substring(0, dotIndex)
+    if (base in mapping) {
+      return mapping[base]
+    }
+  }
+
+  return undefined
 }
 
 /**
@@ -135,23 +143,23 @@ export function resolveCaptureName(
  * token type string to its index in the legend.
  */
 export function buildLegend(mapping: CaptureMapping): {
-  tokenTypes: string[];
-  tokenTypeIndex: Map<string, number>;
+  tokenTypes: string[]
+  tokenTypeIndex: Map<string, number>
 } {
-  const seen = new Set<string>();
-  const tokenTypes: string[] = [];
+  const seen = new Set<string>()
+  const tokenTypes: string[] = []
 
   for (const monacoType of Object.values(mapping)) {
     if (!seen.has(monacoType)) {
-      seen.add(monacoType);
-      tokenTypes.push(monacoType);
+      seen.add(monacoType)
+      tokenTypes.push(monacoType)
     }
   }
 
-  const tokenTypeIndex = new Map<string, number>();
-  for (let i = 0; i < tokenTypes.length; i++) {
-    tokenTypeIndex.set(tokenTypes[i]!, i);
+  const tokenTypeIndex = new Map<string, number>()
+  for (const [i, type] of tokenTypes.entries()) {
+    tokenTypeIndex.set(type, i)
   }
 
-  return { tokenTypes, tokenTypeIndex };
+  return { tokenTypes, tokenTypeIndex }
 }

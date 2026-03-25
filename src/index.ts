@@ -1,10 +1,10 @@
-export { createTreeSitterTokenProvider } from "./provider.js";
-export { DEFAULT_CAPTURE_MAPPING } from "./capture-mapping.js";
+export { DEFAULT_CAPTURE_MAPPING } from "./capture-mapping.js"
+export { createTreeSitterTokenProvider } from "./provider.js"
 
 export type {
   CaptureMapping,
   CreateTreeSitterTokenProviderOptions,
-  TreeSitterTokenProvider,
   MonacoNamespace,
   MonacoSemanticTokensLegend,
-} from "./types.js";
+  TreeSitterTokenProvider,
+} from "./types.js"

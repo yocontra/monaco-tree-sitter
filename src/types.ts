@@ -1,4 +1,4 @@
-import type { Language, Parser, Query, Tree } from "web-tree-sitter";
+import type { Language, Parser, Query, Tree } from "web-tree-sitter"
 
 /**
  * Maps tree-sitter capture names (from highlights.scm) to Monaco semantic token types.
@@ -9,7 +9,7 @@ import type { Language, Parser, Query, Tree } from "web-tree-sitter";
  * Dotted capture names (e.g. "string.special") are looked up first by their full name,
  * then by their base name (e.g. "string").
  */
-export type CaptureMapping = Record<string, string>;
+export type CaptureMapping = Record<string, string>
 
 /**
  * Options for creating a tree-sitter token provider.
@@ -19,25 +19,25 @@ export interface CreateTreeSitterTokenProviderOptions {
    * URL or path to the web-tree-sitter runtime WASM file (tree-sitter.wasm).
    * This is passed to `Parser.init({ locateFile: () => treeSitterWasm })`.
    */
-  treeSitterWasm: string;
+  treeSitterWasm: string
 
   /**
    * URL or path to the language-specific WASM file (e.g. tree-sitter-javascript.wasm).
    * This is passed to `Language.load(languageWasm)`.
    */
-  languageWasm: string;
+  languageWasm: string
 
   /**
    * The contents of a highlights.scm file for the language.
    * This defines which syntax nodes map to which highlight capture names.
    */
-  highlights: string;
+  highlights: string
 
   /**
    * Optional custom mapping from tree-sitter capture names to Monaco semantic token types.
    * Merged on top of the default mapping — your entries take precedence.
    */
-  captureMapping?: CaptureMapping;
+  captureMapping?: CaptureMapping
 }
 
 /**
@@ -53,23 +53,23 @@ export interface TreeSitterTokenProvider {
    * @param monaco - The Monaco editor namespace (typically `import * as monaco from "monaco-editor"`)
    * @param languageId - The language ID to register for (e.g. "javascript", "plazaql")
    */
-  register(monaco: MonacoNamespace, languageId: string): void;
+  register(monaco: MonacoNamespace, languageId: string): void
 
   /**
    * The tree-sitter Language instance, for advanced use cases.
    */
-  readonly language: Language;
+  readonly language: Language
 
   /**
    * The tree-sitter Query instance created from the highlights.scm, for advanced use cases.
    */
-  readonly query: Query;
+  readonly query: Query
 
   /**
    * Dispose of all resources: parsers, trees, queries, and Monaco registrations.
    * After calling dispose(), this provider cannot be used again.
    */
-  dispose(): void;
+  dispose(): void
 }
 
 /**
@@ -82,100 +82,103 @@ export interface MonacoNamespace {
       languageSelector: string,
       provider: MonacoDocumentSemanticTokensProvider,
       legend: MonacoSemanticTokensLegend,
-    ): MonacoDisposable;
-  };
+    ): MonacoDisposable
+  }
   editor: {
-    onDidCreateModel(listener: (model: MonacoTextModel) => void): MonacoDisposable;
-    onWillDisposeModel(listener: (model: MonacoTextModel) => void): MonacoDisposable;
-    getModels(): MonacoTextModel[];
-  };
+    onDidCreateModel(
+      listener: (model: MonacoTextModel) => void,
+    ): MonacoDisposable
+    onWillDisposeModel(
+      listener: (model: MonacoTextModel) => void,
+    ): MonacoDisposable
+    getModels(): MonacoTextModel[]
+  }
 }
 
 /** @internal */
 export interface MonacoSemanticTokensLegend {
-  readonly tokenTypes: string[];
-  readonly tokenModifiers: string[];
+  readonly tokenTypes: string[]
+  readonly tokenModifiers: string[]
 }
 
 /** @internal */
 export interface MonacoSemanticTokens {
-  readonly resultId?: string;
-  readonly data: Uint32Array;
+  readonly resultId?: string
+  readonly data: Uint32Array
 }
 
 /** @internal */
 export interface MonacoSemanticTokensEdits {
-  readonly resultId?: string;
-  readonly edits: MonacoSemanticTokensEdit[];
+  readonly resultId?: string
+  readonly edits: MonacoSemanticTokensEdit[]
 }
 
 /** @internal */
 export interface MonacoSemanticTokensEdit {
-  readonly start: number;
-  readonly deleteCount: number;
-  readonly data?: Uint32Array;
+  readonly start: number
+  readonly deleteCount: number
+  readonly data?: Uint32Array
 }
 
 /** @internal */
 export interface MonacoDocumentSemanticTokensProvider {
-  getLegend(): MonacoSemanticTokensLegend;
+  getLegend(): MonacoSemanticTokensLegend
   provideDocumentSemanticTokens(
     model: MonacoTextModel,
     lastResultId: string | null,
     token: MonacoCancellationToken,
-  ): MonacoSemanticTokens | null;
+  ): MonacoSemanticTokens | null
   provideDocumentSemanticTokensEdits?(
     model: MonacoTextModel,
     lastResultId: string,
     token: MonacoCancellationToken,
-  ): MonacoSemanticTokensEdits | MonacoSemanticTokens | null;
-  releaseDocumentSemanticTokens(resultId: string | undefined): void;
+  ): MonacoSemanticTokensEdits | MonacoSemanticTokens | null
+  releaseDocumentSemanticTokens(resultId: string | undefined): void
 }
 
 /** @internal */
 export interface MonacoCancellationToken {
-  readonly isCancellationRequested: boolean;
+  readonly isCancellationRequested: boolean
 }
 
 /** @internal */
 export interface MonacoDisposable {
-  dispose(): void;
+  dispose(): void
 }
 
 /** @internal */
 export interface MonacoTextModel {
-  readonly uri: { toString(): string };
-  getValue(): string;
-  getVersionId(): number;
-  getLanguageId(): string;
-  onDidChangeContent(listener: (e: MonacoModelContentChangedEvent) => void): MonacoDisposable;
+  readonly uri: { toString(): string }
+  getValue(): string
+  getVersionId(): number
+  getLanguageId(): string
+  onDidChangeContent(
+    listener: (e: MonacoModelContentChangedEvent) => void,
+  ): MonacoDisposable
 }
 
 /** @internal */
 export interface MonacoModelContentChangedEvent {
-  readonly changes: MonacoModelContentChange[];
+  readonly changes: MonacoModelContentChange[]
 }
 
 /** @internal */
 export interface MonacoModelContentChange {
   readonly range: {
-    readonly startLineNumber: number;
-    readonly startColumn: number;
-    readonly endLineNumber: number;
-    readonly endColumn: number;
-  };
-  readonly rangeOffset: number;
-  readonly rangeLength: number;
-  readonly text: string;
+    readonly startLineNumber: number
+    readonly startColumn: number
+    readonly endLineNumber: number
+    readonly endColumn: number
+  }
+  readonly rangeOffset: number
+  readonly rangeLength: number
+  readonly text: string
 }
 
 /** @internal Stored state for a single editor model */
 export interface ModelState {
-  tree: Tree;
-  parser: Parser;
-  version: number;
-  /** Previous token data for computing edits */
-  previousData: Uint32Array | null;
-  previousResultId: string | null;
-  disposable: MonacoDisposable;
+  tree: Tree
+  parser: Parser
+  version: number
+  disposable: MonacoDisposable
 }

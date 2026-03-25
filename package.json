@@ -1,7 +1,7 @@
 {
-  "name": "monaco-tree-sitter",
+  "name": "@plazafyi/monaco-tree-sitter",
   "version": "0.1.0",
-  "description": "Bridge tree-sitter WASM grammars into Monaco Editor for syntax highlighting via DocumentSemanticTokensProvider",
+  "description": "Bridge tree-sitter WASM grammars into Monaco Editor — syntax highlighting, code folding, document symbols, and more",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -24,9 +24,11 @@
   ],
   "scripts": {
     "build": "tsup",
+    "lint": "biome check src",
+    "lint:fix": "biome check --write src",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run test && npm run build"
   },
   "keywords": [
     "monaco",
@@ -34,6 +36,8 @@
     "tree-sitter",
     "syntax-highlighting",
     "semantic-tokens",
+    "code-folding",
+    "document-symbols",
     "wasm"
   ],
   "author": "contra",
@@ -51,10 +55,12 @@
     "web-tree-sitter": ">=0.24.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.9",
+    "@vitest/coverage-v8": "^4.1.1",
     "monaco-editor": "^0.52.2",
     "tsup": "^8.4.0",
     "typescript": "^5.7.3",
-    "vitest": "^3.1.1",
+    "vitest": "^4.1.1",
     "web-tree-sitter": "^0.25.3"
   }
 }
