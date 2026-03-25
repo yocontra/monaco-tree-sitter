@@ -1,0 +1,60 @@
+{
+  "name": "monaco-tree-sitter",
+  "version": "0.1.0",
+  "description": "Bridge tree-sitter WASM grammars into Monaco Editor for syntax highlighting via DocumentSemanticTokensProvider",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "monaco",
+    "monaco-editor",
+    "tree-sitter",
+    "syntax-highlighting",
+    "semantic-tokens",
+    "wasm"
+  ],
+  "author": "contra",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yocontra/monaco-tree-sitter.git"
+  },
+  "homepage": "https://github.com/yocontra/monaco-tree-sitter#readme",
+  "bugs": {
+    "url": "https://github.com/yocontra/monaco-tree-sitter/issues"
+  },
+  "peerDependencies": {
+    "monaco-editor": ">=0.40.0",
+    "web-tree-sitter": ">=0.24.0"
+  },
+  "devDependencies": {
+    "monaco-editor": "^0.52.2",
+    "tsup": "^8.4.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.1.1",
+    "web-tree-sitter": "^0.25.3"
+  }
+}
