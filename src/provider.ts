@@ -407,6 +407,19 @@ export async function createTreeSitterTokenProvider(
       }
     });
     disposables.push(modelDisposable);
+
+    // Clean up when models are disposed
+    const disposeModelListener = monaco.editor.onWillDisposeModel((model: MonacoTextModel) => {
+      const uri = model.uri.toString();
+      const state = models.get(uri);
+      if (state) {
+        state.tree.delete();
+        state.parser.delete();
+        state.disposable.dispose();
+        models.delete(uri);
+      }
+    });
+    disposables.push(disposeModelListener);
   }
 
   function dispose(): void {

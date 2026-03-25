@@ -86,6 +86,7 @@ export interface MonacoNamespace {
   };
   editor: {
     onDidCreateModel(listener: (model: MonacoTextModel) => void): MonacoDisposable;
+    onWillDisposeModel(listener: (model: MonacoTextModel) => void): MonacoDisposable;
     getModels(): MonacoTextModel[];
   };
 }
